@@ -1,0 +1,56 @@
+name: Generate Client
+
+on:
+    push:
+        branches:
+            - master
+        paths:
+            - 'api/**'
+
+jobs:
+    generate-schema:
+        runs-on: ubuntu-latest
+
+        steps:
+            -   name: Checkout repository
+                uses: actions/checkout@v4
+                with:
+                    token: ${{ secrets.RELEASE_GIT_TOKEN }}
+            -   name: "Install Poetry"
+                run: "pipx install poetry"
+            -   name: Set up Python ${{matrix.python-version}}
+                uses: "actions/setup-python@v5"
+                with:
+                    python-version: 3.11
+            -   name: "Install the project"
+                working-directory: api
+                run: "poetry install"
+            -   name: Generate API schema and extract version
+                run: |
+                    cd api
+                    poetry run python src/manage.py spectacular --file openapi.json --validate --format openapi-json
+                    echo "Schema generated"
+            -   name: Commit and push changes
+                run: |
+                    git config --global user.email "github@actions.com"
+                    git config --global user.name "GitHub Actions "
+                    git add .
+                    if [[ -n "$(git diff --cached)" ]]; then
+                        git commit -m "Generate OpenAPI schema [skip ci]"
+                        git push
+                    else
+                        echo "No changes to commit"
+                    fi
+                shell: /usr/bin/bash -e {0}
+            -   name: Discord notification
+                env:
+                        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+                uses: Ilshidur/action-discord@master
+                with:
+                    args: '${{ github.repository }} successfully generated openapi schema.'
+            -   name: Trigger Client Generation
+                uses: peter-evans/repository-dispatch@v2
+                with:
+                    token: ${{ secrets.RELEASE_GIT_TOKEN }}
+                    repository: Qwizi/cs2-battle-src-api-client
+                    event-type: generate-client
