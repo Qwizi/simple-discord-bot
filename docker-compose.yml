@@ -1,22 +1,37 @@
-version: '3.8'
-
 services:
   app:
     build:
-      context: ./api
+      context: ./
       dockerfile: Dockerfile
     container_name: cs2_battle_bot_api
     command: python manage.py runserver 0.0.0.0:8000
     ports:
       - "8002:8000"
     volumes:
-      - ./api/src//:/app/
-      - ./api/pyproject.toml:/app/pyproject.toml
+      - ./cs2_battle_bot:/app
     env_file:
       - .env
     restart: unless-stopped
     depends_on:
       - db
+    networks:
+      - cs2-battle-bot-network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl --fail http://localhost:8000 || exit 1" ]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+  bot:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: cs2_battle_bot_bot
+    command: python manage.py run_bot
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      - app
     networks:
       - cs2-battle-bot-network
   db:
@@ -27,10 +42,13 @@ services:
     restart: unless-stopped
     ports:
       - "5435:5432"
-    healthcheck:
-      test: "exit 0"
     networks:
       - cs2-battle-bot-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 30s
+      timeout: 30s
+      retries: 3
   redis:
     image: "redis:alpine"
     container_name: cs2_battle_bot_redis
@@ -41,16 +59,10 @@ services:
     networks:
       - cs2-battle-bot-network
     healthcheck:
-      test: "exit 1"
-  bot:
-    build: ./bot
-    env_file:
-      - .env
-    volumes:
-      - ./bot/:/app
-    networks:
-      - cs2-battle-bot-network
+      test: [ "CMD-SHELL", "redis-cli ping || exit 1" ]
+      interval: 30s
+      timeout: 30s
+      retries: 3
 
 networks:
   cs2-battle-bot-network:
-    external: true
